@@ -1,0 +1,294 @@
+import asyncio
+import feedparser
+import random
+import re
+import time
+from telethon import TelegramClient, events
+from datetime import datetime, timedelta
+
+BOT_TOKEN = '8797878507:AAFWcwuBlY3luJaIqGsIiDFlEQ4Epo-ZEEU'
+api_id = 6
+api_hash = 'eb06d4abfb49dc3eeb1aeb98ae0f581e'
+proxy = None
+
+channel_config = {
+    '@Honest_1VPN': {
+        'feeds': ['https://xakep.ru/feed/'],
+        'emojis': ['🔐', '🛡️', '🌐', '⚡', '💻'],
+        'tags': ['#VPN', '#безопасность', '#технологии'],
+        'poll_frequency': 0.1,
+        'poll_question': 'Какой VPN вы используете?',
+        'poll_options': ['ExpressVPN', 'NordVPN', 'ProtonVPN', 'Другой'],
+        'delete_after_days': 30
+    },
+    '@stydensvv': {
+        'feeds': ['https://mel.fm/rss'],
+        'emojis': ['📚', '🎓', '📝', '🧠', '💡'],
+        'tags': ['#студент', '#учеба', '#лайфхаки'],
+        'poll_frequency': 0.15,
+        'poll_question': 'Что помогает лучше учиться?',
+        'poll_options': ['Кофе', 'Четкий план', 'Музыка', 'Хороший сон'],
+        'delete_after_days': 25
+    },
+    '@bobszsz': {
+        'feeds': ['https://www.starhit.ru/export/rss/'],
+        'emojis': ['⭐', '🌟', '💫', '🎬', '🎭'],
+        'tags': ['#звезды', '#блогеры', '#новости'],
+        'poll_frequency': 0.12,
+        'poll_question': 'Кто ваш любимый блогер?',
+        'poll_options': ['Моргенштерн', 'Ксения Собчак', 'Лена Миро', 'Другой'],
+        'delete_after_days': 20
+    },
+    '@radostlio': {
+        'feeds': ['https://www.adme.ru/rss.xml'],
+        'emojis': ['👀', '🤔', '😅', '🔥', '💬'],
+        'tags': ['#истории', '#жизнь', '#наблюдения'],
+        'poll_frequency': 0.08,
+        'poll_question': 'Случалась ли с вами похожая история?',
+        'poll_options': ['Да', 'Нет', 'Почти', 'Сейчас расскажу'],
+        'delete_after_days': 35
+    },
+    '@sochialso': {
+        'feeds': ['https://www.psychologies.ru/feed/'],
+        'emojis': ['🧠', '💭', '🌱', '🫂', '🕊️'],
+        'tags': ['#психология', '#отношения', '#созависимость'],
+        'poll_frequency': 0.18,
+        'poll_question': 'Сталкивались ли вы с созависимостью?',
+        'poll_options': ['Да', 'Нет', 'Сейчас прохожу терапию', 'Хочу узнать больше'],
+        'delete_after_days': 40
+    },
+    '@malliebali': {
+        'feeds': ['https://www.psychologies.ru/feed/'],
+        'emojis': ['🌿', '🧘', '🫂', '🕊️', '💙'],
+        'tags': ['#тревога', '#паника', '#поддержка'],
+        'poll_frequency': 0.2,
+        'poll_question': 'Как вы справляетесь с тревогой?',
+        'poll_options': ['Дыхание', 'Спорт', 'Терапия', 'Никак'],
+        'delete_after_days': 30
+    },
+    '@tvoilaxak': {
+        'feeds': ['https://lifehacker.ru/feed/'],
+        'emojis': ['🛠️', '💡', '⚡', '🧩', '🔧'],
+        'tags': ['#лайфхак', '#советы', '#полезно'],
+        'poll_frequency': 0.1,
+        'poll_question': 'Какой лайфхак помог вам больше всего?',
+        'poll_options': ['Организация времени', 'Уборка', 'Кулинария', 'Другой'],
+        'delete_after_days': 25
+    },
+    '@krippaaif': {
+        'feeds': ['https://cryptonews.ru/feed'],
+        'emojis': ['💰', '📈', '🚀', '💎', '📊'],
+        'tags': ['#крипта', '#заработок', '#инвестиции'],
+        'poll_frequency': 0.14,
+        'poll_question': 'Что вы купите в крипте?',
+        'poll_options': ['Bitcoin', 'Ethereum', 'Solana', 'Только мем-койны'],
+        'delete_after_days': 20
+    },
+    '@geyilig': {
+        'feeds': ['https://cyber.sports.ru/rss/'],
+        'emojis': ['🎮', '🕹️', '🔥', '💥', '👾'],
+        'tags': ['#стримеры', '#игры', '#киберспорт'],
+        'poll_frequency': 0.09,
+        'poll_question': 'Кого смотрите чаще всех?',
+        'poll_options': ['Бустер', 'Crystallis', 'Shadow', 'Другой'],
+        'delete_after_days': 15
+    },
+    '@ttemnaya_komnata': {
+        'feeds': ['https://www.psychologies.ru/feed/'],
+        'emojis': ['🌙', '🖤', '🕯️', '💫', '🌌'],
+        'tags': ['#депрессия', '#поддержка', '#честность'],
+        'poll_frequency': 0.16,
+        'poll_question': 'Как вы себя чувствуете сегодня?',
+        'poll_options': ['Нормально', 'Средне', 'Плохо', 'Не знаю'],
+        'delete_after_days': 35
+    },
+    '@otnashena': {
+        'feeds': ['https://www.psychologies.ru/feed/'],
+        'emojis': ['❤️', '💔', '🫂', '💬', '🌹'],
+        'tags': ['#отношения', '#любовь', '#дружба'],
+        'poll_frequency': 0.17,
+        'poll_question': 'Что важнее в отношениях?',
+        'poll_options': ['Доверие', 'Понимание', 'Страсть', 'Дружба'],
+        'delete_after_days': 30
+    },
+    '@patryry': {
+        'feeds': [],
+        'emojis': ['😂', '🤣', '😅', '🔥', '💀'],
+        'tags': ['#мемы', '#кринж', '#юмор'],
+        'poll_frequency': 0.05,
+        'poll_question': 'Какой мем сегодня лучший?',
+        'poll_options': ['Белый медведь', 'Грустный кот', 'Плачущий Джей', 'Лягушка'],
+        'delete_after_days': 15
+    },
+    '@depozit20': {
+        'feeds': ['https://www.rbc.ru/rss/'],
+        'emojis': ['📊', '💹', '💰', '📈', '🏦'],
+        'tags': ['#финансы', '#инвестиции', '#деньги'],
+        'poll_frequency': 0.11,
+        'poll_question': 'Куда вложили бы 100 000 ₽?',
+        'poll_options': ['Акции', 'Облигации', 'Крипта', 'Недвижимость'],
+        'delete_after_days': 30
+    },
+    '@expert_na_minimalkah': {
+        'feeds': ['https://bash.im/rss/'],
+        'emojis': ['😂', '🤪', '😎', '🔥', '💀'],
+        'tags': ['#юмор', '#москва', '#советы'],
+        'poll_frequency': 0.06,
+        'poll_question': 'Как выжить в Москве?',
+        'poll_options': ['Кофе', 'Метро', 'Друзья', 'Терпение'],
+        'delete_after_days': 20
+    },
+    '@mozg_vkluchi': {
+        'feeds': ['https://www.psychologies.ru/feed/'],
+        'emojis': ['🧠', '💅', '💕', '👑', '💪'],
+        'tags': ['#психология', '#девушки', '#самооценка'],
+        'poll_frequency': 0.19,
+        'poll_question': 'Поднимаешь самооценку?',
+        'poll_options': ['Да', 'Нет', 'Пытаюсь', 'А что это?'],
+        'delete_after_days': 30
+    },
+    '@kotdyrova': {
+        'feeds': ['https://habr.com/ru/rss/all/all/?fl=ru'],
+        'emojis': ['💻', '🖥️', '🤖', '⚡', '🔧'],
+        'tags': ['#технологии', '#IT', '#безопасность'],
+        'poll_frequency': 0.09,
+        'poll_question': 'Чего ждать от IT в 2026?',
+        'poll_options': ['ИИ', 'Квантовые компьютеры', 'Метавселенные', 'Другое'],
+        'delete_after_days': 25
+    },
+    '@internetdemo': {
+        'feeds': ['https://lenta.ru/rss/top7'],
+        'emojis': ['📰', '🌐', '📱', '💬', '🔥'],
+        'tags': ['#новости', '#интернет', '#тренды'],
+        'poll_frequency': 0.07,
+        'poll_question': 'Что важнее в новостях?',
+        'poll_options': ['Политика', 'Технологии', 'Спорт', 'Культура'],
+        'delete_after_days': 20
+    }
+}
+
+def get_emoji(channel):
+    return random.choice(channel_config.get(channel, {}).get('emojis', ['⭐']))
+
+def add_tags(channel, text):
+    tags = ' '.join(channel_config.get(channel, {}).get('tags', []))
+    return text + '\n\n' + tags
+
+def clean_summary(summary):
+    return re.sub(r'<[^>]+>', '', summary)[:300]
+
+def get_image(entry):
+    if 'media_content' in entry:
+        return entry.media_content[0].get('url')
+    if 'enclosure' in entry:
+        return entry.enclosure.get('url')
+    return None
+
+async def delete_old_posts(client, channel, days):
+    threshold = datetime.now() - timedelta(days=days)
+    async for msg in client.iter_messages(channel, reverse=True):
+        if msg.date < threshold:
+            try:
+                await msg.delete()
+                print(f'🗑️ Удалён старый пост из {channel}')
+            except:
+                pass
+
+async def send_poll(client, channel, config):
+    if 'poll_question' in config and 'poll_options' in config:
+        await client.send_poll(
+            channel,
+            config['poll_question'],
+            options=config['poll_options'],
+            is_anonymous=True
+        )
+        print(f'📊 Опрос в {channel}')
+        return True
+    return False
+
+async def log_stats(client, message):
+    await asyncio.sleep(60)
+    try:
+        stats = await client.get_messages(message.chat_id, ids=message.id)
+        print(f"📊 Пост в {message.chat_id}: {stats.views} просмотров")
+    except:
+        pass
+
+async def auto_like(client, channel, message):
+    await asyncio.sleep(random.randint(3600, 7200))
+    try:
+        await client.send_reaction(channel, message, ['❤️'])
+        print(f'❤️ Лайк на посте в {channel}')
+    except:
+        pass
+
+bad_words = ['спам', 'реклама', 'мат', 'хуй', 'пизда', 'бля']
+user_last_message = {}
+
+async def filter_messages(event):
+    if event.is_private or event.is_group:
+        text = event.text.lower()
+        if any(word in text for word in bad_words):
+            await event.delete()
+            await event.reply('🚫 Сообщение удалено за нарушение правил.')
+        now = time.time()
+        if event.sender_id in user_last_message and now - user_last_message[event.sender_id] < 5:
+            await event.delete()
+            await event.reply('⏳ Не флудите!')
+        user_last_message[event.sender_id] = now
+
+async def welcome(event):
+    if event.user_joined:
+        await event.reply(f"👋 Добро пожаловать, {event.user.first_name}!")
+
+async def main():
+    client = TelegramClient('bot', api_id, api_hash, proxy=proxy)
+    await client.start(bot_token=BOT_TOKEN)
+
+    @client.on(events.NewMessage)
+    async def filter_handler(event):
+        await filter_messages(event)
+
+    @client.on(events.ChatAction)
+    async def welcome_handler(event):
+        await welcome(event)
+
+    print('🤖 Бот запущен!')
+
+    posted = set()
+    while True:
+        for channel, config in channel_config.items():
+            await delete_old_posts(client, channel, config.get('delete_after_days', 30))
+
+            if random.random() < config.get('poll_frequency', 0.1):
+                await send_poll(client, channel, config)
+                await asyncio.sleep(5)
+                continue
+
+            for url in config['feeds']:
+                feed = feedparser.parse(url)
+                for entry in feed.entries[:1]:
+                    if entry.link in posted:
+                        continue
+                    title = f"{get_emoji(channel)} {entry.title}"
+                    summary = clean_summary(entry.summary) if hasattr(entry, 'summary') else ''
+                    link = entry.link
+                    image_url = get_image(entry)
+                    text = add_tags(channel, f"{title}\n\n{summary}\n\n🔗 {link}")
+
+                    if image_url:
+                        msg = await client.send_file(channel, image_url, caption=text)
+                    else:
+                        msg = await client.send_message(channel, text)
+
+                    asyncio.create_task(auto_like(client, channel, msg))
+                    asyncio.create_task(log_stats(client, msg))
+                    posted.add(entry.link)
+                    await asyncio.sleep(5)
+
+            await asyncio.sleep(random.randint(30, 120))
+
+        await asyncio.sleep(3600)
+
+if __name__ == '__main__':
+    asyncio.run(main())

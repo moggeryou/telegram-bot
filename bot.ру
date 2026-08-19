@@ -5,8 +5,8 @@ import re
 import time
 from telethon import TelegramClient, events
 from datetime import datetime, timedelta
+BOT_TOKEN = '8836968982:AAH_Hoa6mAA3ZVbNwzMjKtvFwBKBKNTxSRY'
 
-BOT_TOKEN = '8797878507:AAFWcwuBlY3luJaIqGsIiDFlEQ4Epo-ZEEU'
 api_id = 6
 api_hash = 'eb06d4abfb49dc3eeb1aeb98ae0f581e'
 proxy = None

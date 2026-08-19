@@ -3,14 +3,14 @@ import feedparser
 import random
 import re
 import time
-from telethon import TelegramClient, events
+from telethon import TelegramClient
 from datetime import datetime, timedelta
-BOT_TOKEN = '8836968982:AAH_Hoa6mAA3ZVbNwzMjKtvFwBKBKNTxSRY'
 
+BOT_TOKEN = '8836968982:AAH_Hoa6mAA3ZVbNwzMjKtvFwBKBKNTxSRY'
 api_id = 6
 api_hash = 'eb06d4abfb49dc3eeb1aeb98ae0f581e'
-proxy = None
 
+# ---- НАСТРОЙКИ КАНАЛОВ ----
 channel_config = {
     '@Honest_1VPN': {
         'feeds': ['https://xakep.ru/feed/'],
@@ -167,6 +167,7 @@ channel_config = {
     }
 }
 
+# ---- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ----
 def get_emoji(channel):
     return random.choice(channel_config.get(channel, {}).get('emojis', ['⭐']))
 
@@ -184,16 +185,6 @@ def get_image(entry):
         return entry.enclosure.get('url')
     return None
 
-async def delete_old_posts(client, channel, days):
-    threshold = datetime.now() - timedelta(days=days)
-    async for msg in client.iter_messages(channel, reverse=True):
-        if msg.date < threshold:
-            try:
-                await msg.delete()
-                print(f'🗑️ Удалён старый пост из {channel}')
-            except:
-                pass
-
 async def send_poll(client, channel, config):
     if 'poll_question' in config and 'poll_options' in config:
         await client.send_poll(
@@ -206,60 +197,16 @@ async def send_poll(client, channel, config):
         return True
     return False
 
-async def log_stats(client, message):
-    await asyncio.sleep(60)
-    try:
-        stats = await client.get_messages(message.chat_id, ids=message.id)
-        print(f"📊 Пост в {message.chat_id}: {stats.views} просмотров")
-    except:
-        pass
-
-async def auto_like(client, channel, message):
-    await asyncio.sleep(random.randint(3600, 7200))
-    try:
-        await client.send_reaction(channel, message, ['❤️'])
-        print(f'❤️ Лайк на посте в {channel}')
-    except:
-        pass
-
-bad_words = ['спам', 'реклама', 'мат', 'хуй', 'пизда', 'бля']
-user_last_message = {}
-
-async def filter_messages(event):
-    if event.is_private or event.is_group:
-        text = event.text.lower()
-        if any(word in text for word in bad_words):
-            await event.delete()
-            await event.reply('🚫 Сообщение удалено за нарушение правил.')
-        now = time.time()
-        if event.sender_id in user_last_message and now - user_last_message[event.sender_id] < 5:
-            await event.delete()
-            await event.reply('⏳ Не флудите!')
-        user_last_message[event.sender_id] = now
-
-async def welcome(event):
-    if event.user_joined:
-        await event.reply(f"👋 Добро пожаловать, {event.user.first_name}!")
-
 async def main():
-    client = TelegramClient('bot', api_id, api_hash, proxy=proxy)
+    client = TelegramClient('bot', api_id, api_hash)
     await client.start(bot_token=BOT_TOKEN)
-
-    @client.on(events.NewMessage)
-    async def filter_handler(event):
-        await filter_messages(event)
-
-    @client.on(events.ChatAction)
-    async def welcome_handler(event):
-        await welcome(event)
-
     print('🤖 Бот запущен!')
 
     posted = set()
+
     while True:
         for channel, config in channel_config.items():
-            await delete_old_posts(client, channel, config.get('delete_after_days', 30))
-
+            # Опрос (случайно, с заданной частотой)
             if random.random() < config.get('poll_frequency', 0.1):
                 await send_poll(client, channel, config)
                 await asyncio.sleep(5)
@@ -270,25 +217,23 @@ async def main():
                 for entry in feed.entries[:1]:
                     if entry.link in posted:
                         continue
+
                     title = f"{get_emoji(channel)} {entry.title}"
                     summary = clean_summary(entry.summary) if hasattr(entry, 'summary') else ''
                     link = entry.link
                     image_url = get_image(entry)
+
                     text = add_tags(channel, f"{title}\n\n{summary}\n\n🔗 {link}")
 
                     if image_url:
-                        msg = await client.send_file(channel, image_url, caption=text)
+                        await client.send_file(channel, image_url, caption=text)
                     else:
-                        msg = await client.send_message(channel, text)
+                        await client.send_message(channel, text)
 
-                    asyncio.create_task(auto_like(client, channel, msg))
-                    asyncio.create_task(log_stats(client, msg))
+                    print(f'✅ Пост отправлен в {channel}')
                     posted.add(entry.link)
                     await asyncio.sleep(5)
 
-            await asyncio.sleep(random.randint(30, 120))
+        await asyncio.sleep(3600)  # пауза 1 час
 
-        await asyncio.sleep(3600)
-
-if __name__ == '__main__':
-    asyncio.run(main())
+asyncio.run(main())

@@ -7,15 +7,10 @@ import re
 import requests
 import asyncio
 from telethon import TelegramClient, events
-from telethon.tl.functions.channels import JoinChannelRequest, InviteToChannelRequest
-from telethon.tl.functions.messages import ImportChatInviteRequest
-from telethon.tl.types import InputPeerUser, InputPeerChannel
-import csv
-import os
+from telethon.tl.functions.channels import InviteToChannelRequest
 
 app = Flask(__name__)
 
-# ---- КОНФИГ ----
 BOT_TOKEN = '8836968982:AAH_Hoa6mAA3ZVbNwzMjKtvFwBKBKNTxSRY'
 TELEGRAM_API = f'https://api.telegram.org/bot{BOT_TOKEN}'
 API_ID = 6
@@ -161,7 +156,7 @@ channel_config = {
     }
 }
 
-# ---- 1. РЕГУЛЯРНЫЙ ПОСТИНГ (БЫЛО) ----
+# ---- ПОСТИНГ ----
 def clean_summary(summary):
     return re.sub(r'<[^>]+>', '', summary)[:200]
 
@@ -202,107 +197,43 @@ def send_poll(channel, question, options):
     except Exception as e:
         print(f'❌ Ошибка опроса в {channel}: {e}')
 
-# ---- 2. НАКРУТКА ПОДПИСЧИКОВ (НОВОЕ) ----
-class SubscriptionBooster:
-    def __init__(self, api_id, api_hash):
-        self.client = TelegramClient('booster_session', api_id, api_hash)
-        self.target_channels = list(channel_config.keys())
+# ---- НАКРУТКА (ОТДЕЛЬНАЯ ФУНКЦИЯ) ----
+def boost_loop():
+    while True:
+        try:
+            print('🚀 Запуск накрутки подписчиков...')
+            asyncio.run(run_boost())
+            print('⏳ Накрутка завершена. Жду 24 часа...')
+            time.sleep(86400)  # раз в сутки
+        except Exception as e:
+            print(f'❌ Ошибка накрутки: {e}')
+            time.sleep(60)
 
-    async def add_members_from_channel(self, source_channel, target_channel, limit=10):
-        """Копирует подписчиков из одного канала в другой."""
-        await self.client.start()
-        source_entity = await self.client.get_entity(source_channel)
-        target_entity = await self.client.get_entity(target_channel)
-        
-        participants = await self.client.get_participants(source_entity, limit=limit)
-        added = 0
-        for user in participants:
-            try:
-                await self.client(InviteToChannelRequest(target_entity, [user.id]))
-                added += 1
-                print(f'➕ Добавлен {user.first_name} в {target_channel}')
-                time.sleep(random.randint(3, 7))
-                if added >= limit:
-                    break
-            except Exception as e:
-                print(f'❌ Ошибка добавления: {e}')
-        return added
+async def run_boost():
+    client = TelegramClient('boost_session', API_ID, API_HASH)
+    await client.start(bot_token=BOT_TOKEN)
+    for channel in channel_config.keys():
+        try:
+            target_entity = await client.get_entity(channel)
+            source_entity = await client.get_entity('@durov')
+            participants = await client.get_participants(source_entity, limit=5)
+            for user in participants:
+                try:
+                    await client(InviteToChannelRequest(target_entity, [user.id]))
+                    print(f'➕ Добавлен {user.first_name} в {channel}')
+                    time.sleep(3)
+                except Exception as e:
+                    print(f'❌ Ошибка добавления: {e}')
+        except Exception as e:
+            print(f'❌ Ошибка для {channel}: {e}')
+    await client.disconnect()
 
-    async def add_from_public_groups(self, target_channel, limit=5):
-        """Ищет публичные группы по теме и добавляет их участников."""
-        await self.client.start()
-        target_entity = await self.client.get_entity(target_channel)
-        groups = ['@durov', '@tginfo', '@telegram']  # можно расширить
-        added = 0
-        for group in groups:
-            try:
-                group_entity = await self.client.get_entity(group)
-                participants = await self.client.get_participants(group_entity, limit=limit)
-                for user in participants:
-                    try:
-                        await self.client(InviteToChannelRequest(target_entity, [user.id]))
-                        added += 1
-                        print(f'➕ Добавлен {user.first_name} в {target_channel}')
-                        time.sleep(random.randint(3, 7))
-                        if added >= limit:
-                            return added
-                    except Exception as e:
-                        print(f'❌ Ошибка: {e}')
-            except Exception as e:
-                print(f'❌ Не удалось получить группу {group}: {e}')
-        return added
-
-    async def run_boost(self):
-        """Запускает накрутку для всех каналов."""
-        await self.client.start()
-        print('🚀 Запуск накрутки подписчиков...')
-        for channel in self.target_channels:
-            await self.add_members_from_channel('@durov', channel, limit=5)
-            await self.add_from_public_groups(channel, limit=3)
-            await asyncio.sleep(5)
-
-# ---- 3. ВЗАИМОПИАР С OCR (НОВОЕ) ----
-class MutualPRBot:
-    """Бот для взаимопиара с проверкой скриншотов через OCR."""
-    def __init__(self, bot_token):
-        self.bot_token = bot_token
-        self.api_url = f'https://api.telegram.org/bot{bot_token}'
-
-    def send_message(self, chat_id, text):
-        url = f'{self.api_url}/sendMessage'
-        requests.post(url, json={'chat_id': chat_id, 'text': text})
-
-    def check_screenshot(self, photo_path):
-        """Здесь должна быть интеграция с easyocr для проверки скриншотов."""
-        # Заглушка — в реальном коде добавляется easyocr
-        print('📸 Проверка скриншота (OCR)...')
-        return True
-
-    def run_pr_cycle(self, channel):
-        """Запускает цикл взаимопиара."""
-        self.send_message(channel, '📢 Запущен взаимопиар! Отправьте ссылку на канал.')
-        # Логика сбора ссылок и проверки — по аналогии с MagistrNeo/TelegramBot[citation:5]
-
-# ---- 4. БЕСПЛАТНЫЕ БОНУСНЫЕ ПОДПИСЧИКИ (НОВОЕ) ----
-def get_free_subscribers(channel, count=10):
-    """Имитация получения бесплатных подписчиков через биржи заданий."""
-    print(f'🎁 Получение {count} бесплатных подписчиков для {channel}...')
-    # В реальности здесь API к SMMPrime, Likemania или другим сервисам[citation:11]
-    # Для демонстрации — эмуляция:
-    for i in range(count):
-        print(f'➕ Бонусный подписчик #{i+1} добавлен в {channel}')
-        time.sleep(0.5)
-    return count
-
-# ---- ОСНОВНОЙ ЦИКЛ ПОСТИНГА + НАКРУТКА ----
+# ---- ФОНОВЫЙ ЦИКЛ ПОСТИНГА ----
 def posting_loop():
     print('🔄 Фоновый постинг запущен...')
     posted = set()
-    booster = SubscriptionBooster(API_ID, API_HASH)
-
     while True:
         try:
-            # 1. Регулярный постинг
             for channel, config in channel_config.items():
                 if random.random() < config.get('poll_frequency', 0.1):
                     if 'poll_question' in config and 'poll_options' in config:
@@ -330,17 +261,8 @@ def posting_loop():
                         posted.add(entry.link)
                         time.sleep(random.randint(5, 10))
 
-            # 2. Накрутка подписчиков (раз в сутки)
-            print('🚀 Запуск накрутки подписчиков...')
-            asyncio.run(booster.run_boost())
-
-            # 3. Бесплатные бонусные подписчики (через биржи заданий)
-            for channel in channel_config.keys():
-                get_free_subscribers(channel, count=5)
-
-            print('⏳ Цикл завершён. Жду 4 часа...')
-            time.sleep(14400)  # 4 часа
-
+            print('⏳ Цикл постинга завершён. Жду 4 часа...')
+            time.sleep(14400)
         except Exception as e:
             print(f'❌ Ошибка в цикле: {e}')
             time.sleep(60)
@@ -353,14 +275,8 @@ def home():
 @app.route('/start')
 def start():
     threading.Thread(target=posting_loop, daemon=True).start()
+    threading.Thread(target=boost_loop, daemon=True).start()
     return 'Постинг и накрутка запущены!'
-
-@app.route('/boost')
-def boost():
-    """Ручной запуск накрутки."""
-    booster = SubscriptionBooster(API_ID, API_HASH)
-    asyncio.run(booster.run_boost())
-    return 'Накрутка выполнена!'
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
